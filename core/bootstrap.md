@@ -27,33 +27,96 @@ composer require \
     symfony/serializer \
     symfony/property-info \
     symfony/property-access \
-    symfony/validator \
     phpdocumentor/reflection-docblock \
     willdurand/negotiation
 ```
 
 ## Full Bootstrap Example
 
-Create a `bootstrap.php` file at the root of your project:
+Create the following file structure:
+
+```text
+├── bootstrap.php
+├── composer.json
+└── src/
+    └── Book.php
+```
+
+Create `src/Book.php`:
+
+```php
+<?php
+
+namespace App;
+
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\CollectionOperationInterface;
+use ApiPlatform\Metadata\Operation;
+use ApiPlatform\State\ProcessorInterface;
+use ApiPlatform\State\ProviderInterface;
+
+#[ApiResource(provider: BookProvider::class, processor: BookProcessor::class)]
+class Book
+{
+    public int $id;
+    public string $title = '';
+}
+
+class BookProvider implements ProviderInterface
+{
+    public function provide(
+        Operation $operation,
+        array $uriVariables = [],
+        array $context = [],
+    ): object|array|null {
+        if ($operation instanceof CollectionOperationInterface) {
+            $book = new Book();
+            $book->id = 1;
+            $book->title = 'API Platform';
+
+            return [$book];
+        }
+
+        $book = new Book();
+        $book->id = $uriVariables['id'];
+        $book->title = 'API Platform';
+
+        return $book;
+    }
+}
+
+class BookProcessor implements ProcessorInterface
+{
+    public function process(
+        mixed $data,
+        Operation $operation,
+        array $uriVariables = [],
+        array $context = [],
+    ): mixed {
+        // Persist your data here
+        return $data;
+    }
+}
+```
+
+Then create `bootstrap.php`:
 
 ```php
 <?php
 
 require './vendor/autoload.php';
 
+use App\BookProcessor;
+use App\BookProvider;
 use ApiPlatform\Hydra\Serializer\CollectionFiltersNormalizer;
 use ApiPlatform\Hydra\Serializer\CollectionNormalizer as HydraCollectionNormalizer;
-use ApiPlatform\Hydra\Serializer\ConstraintViolationListNormalizer as HydraConstraintViolationListNormalizer;
-use ApiPlatform\Hydra\Serializer\EntrypointNormalizer as HydraEntrypointNormalizer;
 use ApiPlatform\Hydra\Serializer\PartialCollectionViewNormalizer;
+use ApiPlatform\JsonLd\Action\ContextAction;
 use ApiPlatform\JsonLd\ContextBuilder as JsonLdContextBuilder;
 use ApiPlatform\JsonLd\Serializer\ItemNormalizer as JsonLdItemNormalizer;
 use ApiPlatform\JsonLd\Serializer\ObjectNormalizer as JsonLdObjectNormalizer;
-use ApiPlatform\Metadata\ApiResource;
-use ApiPlatform\Metadata\CollectionOperationInterface;
 use ApiPlatform\Metadata\HttpOperation;
 use ApiPlatform\Metadata\IdentifiersExtractor;
-use ApiPlatform\Metadata\Operation;
 use ApiPlatform\Metadata\Operation\UnderscorePathSegmentNameGenerator;
 use ApiPlatform\Metadata\Property\Factory\AttributePropertyMetadataFactory;
 use ApiPlatform\Metadata\Property\Factory\PropertyInfoPropertyMetadataFactory;
@@ -117,7 +180,6 @@ use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
 use Symfony\Component\Routing\Generator\UrlGenerator;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\Matcher\UrlMatcher;
-use Symfony\Component\Routing\Matcher\UrlMatcherInterface;
 use Symfony\Component\Routing\RequestContext;
 use Symfony\Component\Routing\Route;
 use Symfony\Component\Routing\RouteCollection;
@@ -136,7 +198,6 @@ use Symfony\Component\Serializer\Serializer;
 // 1. Configuration
 // ──────────────────────────────────────────────
 
-$debug = true;
 $defaultContext = [];
 $formats = ['jsonld' => ['application/ld+json']];
 $patchFormats = ['json' => ['application/merge-patch+json']];
@@ -243,56 +304,7 @@ $filterLocator = new class implements ContainerInterface {
 };
 
 // ──────────────────────────────────────────────
-// 6. User-defined Resource, Provider and Processor
-// ──────────────────────────────────────────────
-
-// Place this class in src/Book.php (matching the path given to AttributesResourceNameCollectionFactory)
-
-#[ApiResource(provider: BookProvider::class, processor: BookProcessor::class)]
-class Book
-{
-    public int $id;
-    public string $title = '';
-}
-
-class BookProvider implements ProviderInterface
-{
-    public function provide(
-        Operation $operation,
-        array $uriVariables = [],
-        array $context = [],
-    ): object|array|null {
-        if ($operation instanceof CollectionOperationInterface) {
-            $book = new Book();
-            $book->id = 1;
-            $book->title = 'API Platform';
-
-            return [$book];
-        }
-
-        $book = new Book();
-        $book->id = $uriVariables['id'];
-        $book->title = 'API Platform';
-
-        return $book;
-    }
-}
-
-class BookProcessor implements ProcessorInterface
-{
-    public function process(
-        mixed $data,
-        Operation $operation,
-        array $uriVariables = [],
-        array $context = [],
-    ): mixed {
-        // Persist your data here
-        return $data;
-    }
-}
-
-// ──────────────────────────────────────────────
-// 7. State Provider and Processor Locators
+// 6. State Provider and Processor Locators
 // ──────────────────────────────────────────────
 
 $providerLocator = new class implements ContainerInterface {
@@ -309,7 +321,7 @@ $providerLocator = new class implements ContainerInterface {
         return isset($this->providers[$id]);
     }
 };
-$providerLocator->providers[BookProvider::class] = new BookProvider();
+$providerLocator->providers[\App\BookProvider::class] = new BookProvider();
 
 $processorLocator = new class implements ContainerInterface {
     /** @var array<string, ProcessorInterface> */
@@ -325,13 +337,13 @@ $processorLocator = new class implements ContainerInterface {
         return isset($this->processors[$id]);
     }
 };
-$processorLocator->processors[BookProcessor::class] = new BookProcessor();
+$processorLocator->processors[\App\BookProcessor::class] = new BookProcessor();
 
 $callableProvider = new CallableProvider($providerLocator);
 $callableProcessor = new CallableProcessor($processorLocator);
 
 // ──────────────────────────────────────────────
-// 8. Route Building
+// 7. Route Building
 // ──────────────────────────────────────────────
 
 $propertyAccessor = PropertyAccess::createPropertyAccessor();
@@ -410,7 +422,7 @@ $routes->add('api_genid', new Route(
 ));
 
 // ──────────────────────────────────────────────
-// 9. Router and URL Generator
+// 8. Router and URL Generator
 // ──────────────────────────────────────────────
 
 $requestContext = new RequestContext();
@@ -422,7 +434,7 @@ class Router implements RouterInterface
 {
     public function __construct(
         private RouteCollection $routes,
-        private UrlMatcherInterface $matcher,
+        private UrlMatcher $matcher,
         private UrlGeneratorInterface $generator,
         private RequestContext $context,
     ) {
@@ -477,7 +489,7 @@ $router = new Router($routes, $matcher, $generator, $requestContext);
 $apiUrlGenerator = new ApiUrlGenerator($generator);
 
 // ──────────────────────────────────────────────
-// 10. IRI Converter
+// 9. IRI Converter
 // ──────────────────────────────────────────────
 
 $uriVariablesConverter = new UriVariablesConverter(
@@ -497,7 +509,7 @@ $iriConverter = new IriConverter(
 );
 
 // ──────────────────────────────────────────────
-// 11. Serializer
+// 10. Serializer
 // ──────────────────────────────────────────────
 
 $serializerContextBuilder = new SerializerContextBuilder($resourceMetadataFactory);
@@ -513,6 +525,18 @@ $jsonLdContextBuilder = new JsonLdContextBuilder(
     $iriConverter,
     $nameConverter,
 );
+
+// Add the JSON-LD context route (required for @context URLs in responses)
+$contextAction = new ContextAction(
+    $jsonLdContextBuilder,
+    $resourceNameCollectionFactory,
+    $resourceMetadataFactory,
+);
+$routes->add('api_jsonld_context', new Route(
+    '/contexts/{shortName}.{_format}',
+    ['_controller' => $contextAction, '_format' => 'jsonld', '_api_respond' => true],
+    ['shortName' => '.+'],
+));
 
 // JSON-LD normalizers
 $jsonLdItemNormalizer = new JsonLdItemNormalizer(
@@ -558,17 +582,6 @@ $hydraCollectionFiltersNormalizer = new CollectionFiltersNormalizer(
     $filterLocator,
 );
 
-$hydraEntrypointNormalizer = new HydraEntrypointNormalizer(
-    $resourceMetadataFactory,
-    $iriConverter,
-    $apiUrlGenerator,
-);
-
-$hydraConstraintViolationNormalizer = new HydraConstraintViolationListNormalizer(
-    [],
-    $nameConverter,
-);
-
 // Core normalizer
 $itemNormalizer = new ItemNormalizer(
     $propertyNameCollectionFactory,
@@ -592,8 +605,6 @@ $dateTimeNormalizer = new DateTimeNormalizer($defaultContext);
 // Register normalizers with priorities (same as Symfony bundle)
 $list = new \SplPriorityQueue();
 $list->insert($unwrappingDenormalizer, 1000);
-$list->insert($hydraConstraintViolationNormalizer, -780);
-$list->insert($hydraEntrypointNormalizer, -800);
 $list->insert($hydraCollectionFiltersNormalizer, -800);
 $list->insert($jsonLdItemNormalizer, -890);
 $list->insert($jsonLdObjectNormalizer, -995);
@@ -606,17 +617,19 @@ $encoders = [new JsonEncoder(), new ApiJsonLdEncoder('jsonld', new JsonEncoder()
 $serializer = new Serializer(iterator_to_array($list), $encoders);
 
 // ──────────────────────────────────────────────
-// 12. State Providers and Processors
+// 11. State Providers and Processors
 // ──────────────────────────────────────────────
 
-// Provider chain: reads data from the user's provider
-$readProvider = new ReadProvider($callableProvider, $serializerContextBuilder, $logger);
+// Content negotiation provider (standalone: only negotiates format, does not read data)
 $contentNegotiationProvider = new ContentNegotiationProvider(
-    $readProvider,
+    null,
     new Negotiator(),
     $formats,
     $errorFormats,
 );
+
+// Read provider: fetches data from the user's provider
+$readProvider = new ReadProvider($callableProvider, $serializerContextBuilder, $logger);
 
 // Processor chain: writes data, serializes, and creates the HTTP response
 $respondProcessor = new RespondProcessor(
@@ -633,12 +646,12 @@ $serializeProcessor = new SerializeProcessor(
 );
 
 // ──────────────────────────────────────────────
-// 13. Event Listeners and HttpKernel
+// 12. Event Listeners and HttpKernel
 // ──────────────────────────────────────────────
 
 $formatListener = new AddFormatListener($contentNegotiationProvider, $resourceMetadataFactory);
 $readListener = new ReadListener(
-    $contentNegotiationProvider,
+    $readProvider,
     $resourceMetadataFactory,
     $uriVariablesConverter,
 );
@@ -673,7 +686,19 @@ $kernel->terminate($request, $response);
 
 ## Running
 
-Start the PHP built-in server:
+Make sure your `composer.json` includes the PSR-4 autoload for the `src/` directory:
+
+```json
+{
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+}
+```
+
+Then run `composer dump-autoload` and start the PHP built-in server:
 
 ```console
 php -S localhost:8000 bootstrap.php
@@ -692,7 +717,7 @@ This bootstrap provides a minimal JSON-LD/Hydra API. To add more features, you c
 
 -   **Deserialization**: add `DeserializeProvider` and `DeserializeListener` for POST/PUT/PATCH
     support
--   **Validation**: add `ValidateProvider` and `ValidateListener` with Symfony Validator
+-   **Validation**: add `ValidateProvider` and `ValidateListener` with `symfony/validator`
 -   **HAL/JSON:API**: register the corresponding normalizers with additional `api-platform/hal` or
     `api-platform/jsonapi` packages
 -   **OpenAPI**: add `OpenApiFactory` and `OpenApiNormalizer` for automatic API documentation
