@@ -39,7 +39,9 @@ Create the following file structure:
 ├── bootstrap.php
 ├── composer.json
 └── src/
-    └── Book.php
+    ├── Book.php
+    ├── BookProcessor.php
+    └── BookProvider.php
 ```
 
 Create `src/Book.php`:
@@ -50,10 +52,6 @@ Create `src/Book.php`:
 namespace App;
 
 use ApiPlatform\Metadata\ApiResource;
-use ApiPlatform\Metadata\CollectionOperationInterface;
-use ApiPlatform\Metadata\Operation;
-use ApiPlatform\State\ProcessorInterface;
-use ApiPlatform\State\ProviderInterface;
 
 #[ApiResource(provider: BookProvider::class, processor: BookProcessor::class)]
 class Book
@@ -61,6 +59,18 @@ class Book
     public int $id;
     public string $title = '';
 }
+```
+
+Create `src/BookProvider.php`:
+
+```php
+<?php
+
+namespace App;
+
+use ApiPlatform\Metadata\CollectionOperationInterface;
+use ApiPlatform\Metadata\Operation;
+use ApiPlatform\State\ProviderInterface;
 
 class BookProvider implements ProviderInterface
 {
@@ -84,6 +94,17 @@ class BookProvider implements ProviderInterface
         return $book;
     }
 }
+```
+
+Create `src/BookProcessor.php`:
+
+```php
+<?php
+
+namespace App;
+
+use ApiPlatform\Metadata\Operation;
+use ApiPlatform\State\ProcessorInterface;
 
 class BookProcessor implements ProcessorInterface
 {
